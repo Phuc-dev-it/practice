@@ -1,254 +1,431 @@
-CREATE DATABASE QLDT_DB;
-USE QLDR_DB;
+CREATE DATABASE SocialNetworkDB;
+USE SocialNetworkDB;
 
-CREATE TABLE Students (
-    StudentID INT PRIMARY KEY,
-    Name VARCHAR(100),
-    Age INT,
-    Status VARCHAR(50),
-    TotalCredits INT
+CREATE TABLE users (
+    user_id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE Courses (
-    CourseID INT PRIMARY KEY,
-    CourseName VARCHAR(100),
-    MaxStudents INT,
-    CurrentStudents INT
+CREATE TABLE posts (
+    post_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    content TEXT NOT NULL,
+    like_count INT DEFAULT 0,
+    comment_count INT DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
-CREATE TABLE Enrollments (
-    EnrollmentID INT PRIMARY KEY,
-    StudentID INT,
-    CourseID INT,
-    Grade FLOAT
+CREATE TABLE comments (
+    comment_id INT PRIMARY KEY AUTO_INCREMENT,
+    post_id INT NOT NULL,
+    user_id INT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
-CREATE TABLE Student_Logs (
-    LogID INT PRIMARY KEY AUTO_INCREMENT,
-    StudentID INT,
-    ActionType VARCHAR(50),
-    ActionDate DATETIME
+CREATE TABLE friends (
+    friendship_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    friend_id INT NOT NULL,
+    status VARCHAR(20) CHECK (status IN ('pending', 'accepted')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (friend_id) REFERENCES users(user_id),
+    CHECK (user_id != friend_id),
+    UNIQUE (
+        (LEAST(user_id, friend_id)),
+        (GREATEST(user_id, friend_id))
+    )
 );
 
-CREATE TABLE Grade_History (
-    HistoryID INT PRIMARY KEY AUTO_INCREMENT,
-    EnrollmentID INT,
-    OldGrade FLOAT,
-    NewGrade FLOAT,
-    ChangeDate DATETIME
+CREATE TABLE likes (
+    like_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    post_id INT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+    UNIQUE (user_id, post_id)
 );
 
-CREATE TABLE Deleted_Students (
-    StudentID INT PRIMARY KEY,
-    Name VARCHAR(100),
-    Age INT,
-    Status VARCHAR(50),
-    TotalCredits INT
-);
+USE SocialNetworkDB;
 
-INSERT INTO Students (StudentID, Name, Age, Status, TotalCredits) VALUES
-(1, 'Nguyen Van A', 20, 'Studying', 45),
-(2, 'Tran Thi B', 21, 'Studying', 115),
-(3, 'Le Van C', 22, 'Studying', 125),
-(4, 'Phan Thi D', 19, 'Studying', 15);
+INSERT INTO users (username, password, email) VALUES
+('an_nguyen', 'matkhau123', 'an@gmail.com'),
+('binh_tran', 'binh456', 'binh@gmail.com'),
+('chi_le', 'chi789', 'chi@gmail.com'),
+('duy_pham', 'duy321', 'duy@gmail.com'),
+('hoa_vo', 'hoa654', 'hoa@gmail.com');
 
-INSERT INTO Courses (CourseID, CourseName, MaxStudents, CurrentStudents) VALUES
-(101, 'Co so du lieu', 40, 2),
-(102, 'Lap trinh Web', 30, 0),
-(103, 'Cau truc du lieu', 2, 2);
+INSERT INTO posts (user_id, content, like_count, comment_count) VALUES
+(1, 'Hôm nay trời đẹp quá, đi cà phê thôi!', 2, 2),
+(2, 'Đang học thiết kế cơ sở dữ liệu MySQL.', 3, 1),
+(3, 'Code frontend xong muốn đi ngủ luôn.', 1, 1),
+(4, 'Vừa hoàn thành project backend đầu tiên.', 2, 0),
+(5, 'Cố gắng học fullstack mỗi ngày.', 1, 1);
 
-INSERT INTO Enrollments (EnrollmentID, StudentID, CourseID, Grade) VALUES
-(1001, 1, 101, 8.5),
-(1002, 2, 101, 7.0),
-(1003, 3, 103, 9.0),
-(1004, 1, 103, 6.5);
+-- COMMENTS
+INSERT INTO comments (post_id, user_id, content) VALUES
+(1, 2, 'Đi cà phê nhớ rủ nha.'),
+(1, 3, 'Thời tiết hôm nay đúng chill thật.'),
+(2, 1, 'MySQL học càng nhiều càng lú.'),
+(3, 5, 'Frontend nhiều lỗi vặt khó chịu thật.'),
+(5, 4, 'Cố lên rồi sẽ thành công.');
 
+-- FRIENDS
+INSERT INTO friends (user_id, friend_id, status) VALUES
+(1, 2, 'accepted'),
+(1, 3, 'accepted'),
+(2, 4, 'pending'),
+(3, 5, 'accepted'),
+(4, 5, 'accepted');
 
--- câu 1 
+-- LIKES
+INSERT INTO likes (user_id, post_id) VALUES
+(2, 1),
+(3, 1),
+(1, 2),
+(4, 2),
+(5, 2);
 
-DELIMITER $$            
-CREATE TRIGGER trg_after_student_insert
-AFTER INSERT ON Students        
-FOR EACH ROW                  
+-- F01
+DROP PROCEDURE IF EXISTS create_account_social;
+DELIMITER //
+CREATE PROCEDURE create_account_social (p_username VARCHAR(50), p_password VARCHAR(255), p_email VARCHAR(100))
 BEGIN
-    INSERT INTO Student_Logs (StudentID, ActionType, ActionDate)
-    VALUES (NEW.StudentID, 'INSERT', NOW());
-END$$
-DELIMITER ;  
+	DECLARE email_same VARCHAR(100);
+    DECLARE password VARCHAR(255);
+    SELECT email INTO email_same FROM users WHERE email = p_email;
+	IF email_same IS NOT NULL THEN
+		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Lỗi: Email đã được sử dụng';
+	ELSE INSERT INTO users (username, password, email) VALUES (p_username, SHA1(p_password), p_email);
+	END IF;
+    SELECT 'Đã tạo tài khoản thành công' AS message;
+END //
+DELIMITER ;
+CALL create_account_social ('Nguyễn Minh Trung', '090202r', 'nmt@gmail.com');
+-- F02
 
--- CÂU 2 
+DELIMITER //
+CREATE PROCEDURE create_post (p_user_id INT, p_content TEXT)
+BEGIN
+	IF (SELECT 1 FROM users WHERE user_id = p_user_id) IS NULL THEN
+		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User không tồn tại';
+	END IF;
+    IF p_content IS NULL OR trim(p_content) = '' THEN
+		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nội dung không được rỗng';
+	END IF;
+	INSERT INTO posts (user_id, content) VALUES (p_user_id, p_content);
+    SELECT 'Thêm bài viết thành công' AS message;
+END //
+DELIMITER ;
+CALL create_post (1, 'Hello World');
 
+-- F03 - THÍCH / HỦY THÍCH BÀI VIẾT
+
+
+-- Trigger tăng like_count khi like
 DELIMITER $$
 
-CREATE TRIGGER trg_before_student_insert_uppercase
-BEFORE INSERT ON Students     
+CREATE TRIGGER trg_after_like
+AFTER INSERT
+ON likes
 FOR EACH ROW
 BEGIN
-    SET NEW.Name = UPPER(NEW.Name);
-END$$
+    UPDATE posts
+    SET like_count = like_count + 1
+    WHERE post_id = NEW.post_id;
+END $$
 
 DELIMITER ;
 
--- câu 3 
-
-DELIMITER $$            
-CREATE TRIGGER trg_before_student_insert
-BEFORE INSERT ON Students        
-FOR EACH ROW                  
-BEGIN
-	IF NEW.Age < 18 THEN        
-    SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Sinh viên phải từ 18 tuổi trở lên';
-END IF;
-END$$
-DELIMITER ;
-
--- CÂU 4 
-
-CREATE TABLE Grade_History (
-    HistoryID INT PRIMARY KEY AUTO_INCREMENT,
-    EnrollmentID INT NOT NULL,
-    OldGrade DECIMAL(4,2), 
-    NewGrade DECIMAL(4,2), 
-    ChangeDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_history_enrollment FOREIGN KEY (EnrollmentID)
-        REFERENCES Enrollments (EnrollmentID)
-        ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-
-DELIMITER $$
- 
-CREATE TRIGGER trg_after_grade_update
-AFTER UPDATE ON Enrollments
-FOR EACH ROW
-BEGIN
-    IF (OLD.Grade <> NEW.Grade
-        OR (OLD.Grade IS NULL AND NEW.Grade IS NOT NULL)
-        OR (OLD.Grade IS NOT NULL AND NEW.Grade IS NULL)) THEN
-			INSERT INTO Grade_History (EnrollmentID, OldGrade, NewGrade, ChangeDate)
-			VALUES (NEW.EnrollmentID, OLD.Grade, NEW.Grade, NOW());
-    END IF;
-END$$
-DELIMITER ;
-
--- câu 5
-
-CREATE TABLE Deleted_Students (
-    StudentID INT NOT NULL,
-    Name VARCHAR(100) NOT NULL,
-    Age INT NOT NULL,
-    Status ENUM('Active', 'Inactive', 'Graduated', 'Suspended') NOT NULL,
-    TotalCredits INT NOT NULL,
-    DeletedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-DELIMITER $$
-CREATE TRIGGER trg_before_student_delete_backup
-BEFORE DELETE ON Students
-FOR EACH ROW
-BEGIN
-    INSERT INTO Deleted_Students (StudentID, Name, Age, Status, TotalCredits, DeletedAt)
-    VALUES (OLD.StudentID, OLD.Name, OLD.Age, OLD.Status, OLD.TotalCredits, NOW());
-END$$
-DELIMITER ;
-
--- câu 6
-
-DELIMITER $$
- 
-CREATE TRIGGER trg_after_enrollment_insert_sync
-AFTER INSERT ON Enrollments
-FOR EACH ROW
-BEGIN
-    UPDATE Courses
-    SET CurrentStudents = CurrentStudents + 1
-    WHERE CourseID = NEW.CourseID;
-END$$
- 
-DELIMITER ;
-
--- CÂU 7
-
-DELIMITER $$
- 
-CREATE TRIGGER trg_after_enrollment_delete_sync
-AFTER DELETE ON Enrollments
-FOR EACH ROW
-BEGIN
-    UPDATE Courses
-    SET CurrentStudents = CurrentStudents - 1
-    WHERE CourseID = OLD.CourseID
-      AND CurrentStudents > 0; -- để không bị âm
-END$$
- 
-DELIMITER ;
-
--- câu 8
-
+-- Trigger giảm like_count khi hủy like
 DELIMITER $$
 
-CREATE TRIGGER trg_before_enrollment_insert_check_capacity
-BEFORE INSERT ON Enrollments
+CREATE TRIGGER trg_after_unlike
+AFTER DELETE
+ON likes
 FOR EACH ROW
 BEGIN
-    IF (SELECT CurrentStudents FROM Courses WHERE CourseID = NEW.CourseID) 
-       >= 
-       (SELECT MaxStudents FROM Courses WHERE CourseID = NEW.CourseID) THEN 
+    UPDATE posts
+    SET like_count = like_count - 1
+    WHERE post_id = OLD.post_id;
+END $$
+
+DELIMITER ;
+
+-- Like bài viết
+INSERT INTO likes(user_id, post_id)
+VALUES (1,3);
+
+-- Hủy like
+DELETE FROM likes
+WHERE user_id = 1 AND post_id = 3;
+
+-- F04 - GỬI LỜI MỜI KẾT BẠN
+
+
+-- Trigger chặn gửi lời mời đảo chiều/trùng lặp
+DELIMITER $$
+
+CREATE TRIGGER trg_check_friend_request
+BEFORE INSERT
+ON friends
+FOR EACH ROW
+BEGIN
+    DECLARE existing_count INT;
+
+    SELECT COUNT(*)
+    INTO existing_count
+    FROM friends
+    WHERE 
+        (user_id = NEW.user_id AND friend_id = NEW.friend_id)
+        OR
+        (user_id = NEW.friend_id AND friend_id = NEW.user_id);
+
+    IF existing_count > 0 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Môn học đã đủ số lượng sinh viên tối đa';
-
+        SET MESSAGE_TEXT = 'Da ton tai loi moi ket ban';
     END IF;
-END$$
+END $$
+
+DELIMITER ;
+
+-- Gửi lời mời kết bạn
+INSERT INTO friends(user_id, friend_id, status)
+VALUES (2,5,'pending');
+
+-- Test gửi trùng/ngược chiều (sẽ lỗi)
+INSERT INTO friends(user_id, friend_id, status)
+VALUES (5,2,'pending');
+
+-- F05
+DELIMITER $$
+CREATE PROCEDURE manage_friendship(
+    IN p_user_id INT,
+    IN p_friend_id INT,
+    IN p_action VARCHAR(20)
+)
+BEGIN
+	IF p_action = 'accept' THEN
+		UPDATE friends
+        SET status = 'accpept'
+        WHERE 
+			(user_id = p_user_id AND friend_id = p_friend_id)
+            OR
+            (user_id = p_friend_id AND friend_id = p_user_id);
+	ELSEIF p_action = 'cancel' THEN
+        DELETE FROM friends
+        WHERE 
+            (user_id = p_user_id AND friend_id = p_friend_id)
+            OR
+            (user_id = p_friend_id AND friend_id = p_user_id);
+    END IF;
+END $$
+DELIMITER ;
+
+-- F06
+CREATE VIEW user_profile_view AS
+SELECT 
+    u.user_id,
+    u.username,
+    u.email,
+    u.created_at,
+    COUNT(p.post_id) AS total_posts,
+    SUM(p.like_count) AS total_likes_received,
+    SUM(p.comment_count) AS total_comments_received
+FROM users u
+LEFT JOIN posts p 
+    ON u.user_id = p.user_id
+GROUP BY 
+    u.user_id,
+    u.username,
+    u.email,
+    u.created_at;
+    
+    
+-- F07
+DELIMITER $$
+
+CREATE PROCEDURE search_posts(
+    IN p_keyword VARCHAR(100)
+)
+BEGIN
+    SELECT *
+    FROM posts
+    WHERE content LIKE CONCAT('%', p_keyword, '%');
+END $$
+
 DELIMITER ;
 
 
--- câu 9 
-
+-- F08
 DELIMITER $$
 
-CREATE TRIGGER trg_before_student_update_check_graduated
-BEFORE UPDATE ON Students
-FOR EACH ROW
+CREATE PROCEDURE report_user_activity(
+    IN p_user_id INT
+)
 BEGIN
-    IF NEW.Status = 'Graduated' AND NEW.TotalCredits < 120 THEN
+    SELECT
+        COUNT(post_id) AS total_posts,
+        SUM(like_count) AS total_likes,
+        SUM(comment_count) AS total_comments
+    FROM posts
+    WHERE user_id = p_user_id;
+END $$
+
+DELIMITER ;
+
+-- F09: Friend suggestion using CTE
+DELIMITER //
+CREATE PROCEDURE sp_suggest_friends(
+    IN p_user_id INT
+)
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM users WHERE user_id = p_user_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User không tồn tại';
+    END IF;
+
+    WITH my_friends AS (
+        SELECT
+            CASE
+                WHEN user_id = p_user_id THEN friend_id
+                ELSE user_id
+            END AS friend_user_id
+        FROM friends
+        WHERE (user_id = p_user_id OR friend_id = p_user_id)
+          AND status = 'accepted'
+    ),
+    friends_of_friends AS (
+        SELECT
+            CASE
+                WHEN f.user_id = mf.friend_user_id THEN f.friend_id
+                ELSE f.user_id
+            END AS suggested_user_id,
+            mf.friend_user_id AS mutual_friend_id
+        FROM friends f
+        JOIN my_friends mf
+          ON f.user_id = mf.friend_user_id
+          OR f.friend_id = mf.friend_user_id
+        WHERE f.status = 'accepted'
+    )
+    SELECT
+        u.user_id,
+        u.username,
+        COUNT(DISTINCT fof.mutual_friend_id) AS mutual_friend_count
+    FROM friends_of_friends fof
+    JOIN users u ON u.user_id = fof.suggested_user_id
+    WHERE fof.suggested_user_id <> p_user_id
+      AND fof.suggested_user_id NOT IN (SELECT friend_user_id FROM my_friends)
+    GROUP BY u.user_id, u.username
+    ORDER BY mutual_friend_count DESC, u.username ASC;
+END //
+DELIMITER ;
+-- F10:
+DELIMITER // 
+
+CREATE PROCEDURE DeletePost(
+    IN p_post_id INT,
+    IN p_user_id INT
+)
+BEGIN
+
+    DECLARE v_owner_id INT;
+
+    START TRANSACTION;
+
+    -- Kiểm tra bài viết tồn tại
+    SELECT user_id
+    INTO v_owner_id
+    FROM posts
+    WHERE post_id = p_post_id;
+
+    IF v_owner_id IS NULL THEN
+
+        ROLLBACK;
+
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Sinh viên chưa đủ tín chỉ để tốt nghiệp';
+        SET MESSAGE_TEXT = 'Bài viết không tồn tại';
+
     END IF;
-END$$
 
-DELIMITER ;
+    -- Chỉ chủ bài viết mới được xóa
+    IF v_owner_id != p_user_id THEN
 
--- câu 10
-
-DELIMITER $$
-
-CREATE TRIGGER trg_before_course_delete_cascade
-BEFORE DELETE ON Courses
-FOR EACH ROW
-BEGIN
-    DELETE FROM Enrollments WHERE CourseID = OLD.CourseID;
-END$$
-
-DELIMITER ;
-
--- câu 11
-
-DELIMITER $$
-
-CREATE TRIGGER trg_before_enrollment_insert_check_max_courses
-BEFORE INSERT ON Enrollments
-FOR EACH ROW
-BEGIN
-    IF (SELECT COUNT(*) FROM Enrollments 
-        WHERE StudentID = NEW.StudentID AND Grade IS NULL) >= 5 THEN
+        ROLLBACK;
 
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Sinh viên không được học quá 5 môn cùng lúc';
+        SET MESSAGE_TEXT = 'Bạn không có quyền xóa bài viết này';
 
     END IF;
-END$$
+
+    -- Xóa bài viết
+    DELETE FROM posts
+    WHERE post_id = p_post_id;
+
+    COMMIT;
+
+END// 
 
 DELIMITER ;
- 
 
+
+-- F11
+DROP PROCEDURE IF EXISTS delete_user;
+DELIMITER //
+CREATE PROCEDURE delete_user (p_user_id INT)
+BEGIN
+	DECLARE EXIT HANDLER FOR SQLEXCEPTION 
+    BEGIN
+		ROLLBACK;
+        RESIGNAL;
+    END;
+	SET SQL_SAFE_UPDATES = 0;
+    START TRANSACTION;
+    
+	IF (SELECT 1 FROM users WHERE user_id = p_user_id) IS NULL THEN
+		SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User không tồn tại';
+	END IF;
+    
+    DELETE FROM friends
+    WHERE user_id = p_user_id OR friend_id = p_user_id;
+
+    -- Delete user's likes
+    DELETE FROM likes
+    WHERE user_id = p_user_id;
+
+    -- Delete user's comments on other posts
+    DELETE FROM comments
+    WHERE user_id = p_user_id;
+
+    -- Delete likes/comments belonging to user's posts before deleting posts
+    DELETE l
+    FROM likes l
+    JOIN posts p ON p.post_id = l.post_id
+    WHERE p.user_id = p_user_id;
+
+    DELETE c
+    FROM comments c
+    JOIN posts p ON p.post_id = c.post_id
+    WHERE p.user_id = p_user_id;
+
+    -- Delete user's posts
+    DELETE FROM posts
+    WHERE user_id = p_user_id;
+
+    -- Delete user
+    DELETE FROM users
+    WHERE user_id = p_user_id;
+	SELECT 'Xóa người dùng thành công' AS message;
+    
+    COMMIT;
+
+END //
+DELIMITER ;
+CALL delete_user (1);
